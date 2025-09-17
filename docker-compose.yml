@@ -1,0 +1,100 @@
+version: "3.8"
+
+networks:
+  elk:
+    driver: bridge
+
+volumes:
+  esdata:
+  kafkadata:
+  zk-data:
+  zk-datalog:
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: elasticsearch
+    environment:
+      - node.name=es-node
+      - cluster.name=docker-cluster
+      - discovery.type=single-node
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports: ["9200:9200"]
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    networks: [elk]
+    restart: unless-stopped
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: kibana
+    depends_on: [elasticsearch]
+    environment:
+      - SERVER_HOST=0.0.0.0
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=kibana_system
+      - ELASTICSEARCH_PASSWORD=${KIBANA_SYSTEM_PASSWORD}
+      - XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY=0123456789abcdef0123456789abcdef
+    ports: ["5601:5601"]
+    networks: [elk]
+    restart: unless-stopped
+
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: zookeeper
+    ports: ["2181:2181"]
+    volumes:
+      - zk-data:/data
+      - zk-datalog:/datalog
+    networks: [elk]
+    restart: unless-stopped
+
+  kafka:
+    image: wurstmeister/kafka:latest
+    container_name: kafka
+    depends_on: [zookeeper]
+    ports: ["9092:9092", "9094:9094"]
+    environment:
+      # Zookeeper
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+
+      # Bind listeners
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9094
+      # Advertised listeners (inside Docker vs from host)
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9094
+
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+      # Single-broker defaults
+      KAFKA_BROKER_ID: 1
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+
+      # Avoid accidental topic creation
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+
+      # Data dir
+      KAFKA_LOG_DIRS: /kafka-logs
+    volumes:
+      - kafkadata:/kafka-logs
+    networks: [elk]
+    restart: unless-stopped
+
+  spark:
+    image: bitnami/spark:3.5
+    container_name: spark
+    depends_on: [kafka]
+    environment:
+      - SPARK_MODE=client
+    volumes:
+      - ./spark:/app
+    working_dir: /app
+    networks: [elk]
+    restart: unless-stopped

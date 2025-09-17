@@ -1,0 +1,21 @@
+# Virtual environments
+mdc-env/
+venv/
+__pycache__/
+
+# Environment variables
+.env
+
+# Logs
+*.log
+mdc_logs/
+
+# System / editor files
+.DS_Store
+.idea/
+.vscode/
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
