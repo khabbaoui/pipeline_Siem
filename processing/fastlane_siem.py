@@ -155,6 +155,20 @@ raw = (
     )
 )
 
+(
+    raw.groupBy("kafka_topic").count()
+    .writeStream.outputMode("complete")
+    .format("console")
+    .option("truncate", "false")
+    .option("numRows", "100")
+    .option(
+        "checkpointLocation",
+        os.path.join(CHECKPOINT_DIR, PIPELINE_VERSION, "diag-by-topic"),
+    )
+    .queryName("diag-by-topic")
+    .start()
+)
+
 
 def parse_by_topic(df, topic_name, schema):
     return (
@@ -209,6 +223,7 @@ auth = (
 
 dns = (
     parse_by_topic(raw, "sec.dns.raw", DNS_SCHEMA)
+    .withWatermark("timestamp", "10 minutes")
     .withColumn(
         "qname",
         F.coalesce(
@@ -227,6 +242,7 @@ ids = (
 
 vpn = (
     parse_by_topic(raw, "sec.vpn.raw", VPN_SCHEMA)
+    .withWatermark("timestamp", "30 minutes")
     .withColumn("key", F.coalesce(F.col("key_str"), F.col("user"), F.col("srcip"), F.col("host")))
 )
 
@@ -499,7 +515,7 @@ dns_60 = (
        .agg(
            F.count(F.lit(1)).alias("n"),
            F.sum(F.col("is_nx").cast("int")).alias("n_nx"),
-           F.countDistinct("qname").alias("uniq_q"),
+           F.approx_count_distinct("qname").alias("uniq_q"),   # <— HLL au lieu de countDistinct
        )
        .withColumn(
            "nx_rate",
@@ -527,15 +543,15 @@ dns_scored = (
         F.concat(
             F.lit("DNS anomalies: n="), F.col("n").cast("string"),
             F.lit(", nx="), F.col("n_nx").cast("string"),
-            F.lit(", uniq_q="), F.col("uniq_q").cast("string"),
+            F.lit(", uniq_q~"), F.col("uniq_q").cast("string"),
         ).alias("reason"),
         F.to_json(
             F.struct(
                 F.lit("60s").alias("win"),
-                "n",
-                "n_nx",
-                "uniq_q",
-                "nx_rate",
+                F.col("n").alias("n"),
+                F.col("n_nx").alias("n_nx"),
+                F.col("uniq_q").alias("uniq_q"),
+                F.round(F.col("nx_rate"), 3).alias("nx_rate"),
             )
         ).alias("evidence"),
         F.lit("sec.dns.raw").alias("kafka_topic"),
@@ -583,11 +599,11 @@ ids_scored = (
 
 # VPN (échecs + multi-géos sur 60 min)
 vpn_60m = (
-    vpn.groupBy(F.window("timestamp", "60 minutes").alias("w60m"), "key")
+    vpn.groupBy(F.window("timestamp", "60 minutes").alias("w60m"), F.col("key"))
        .agg(
-           F.countDistinct("geo").alias("geo_cnt"),
-           F.sum((F.col("action") == "fail").cast("int")).alias("fails"),
-           F.sum((F.col("action") == "login").cast("int")).alias("logins"),
+           F.approx_count_distinct("geo").alias("geo_cnt"),  # <- HLL au lieu de count(distinct)
+           F.sum(F.when(F.col("action") == "fail", 1).otherwise(0)).alias("fails"),
+           F.sum(F.when(F.col("action") == "login", 1).otherwise(0)).alias("logins"),
        )
 )
 
@@ -659,14 +675,20 @@ winl_scored = (
 )
 
 # Netflow (1m: scans & ports rares)
-common_ports = F.array([F.lit(p) for p in [22, 80, 443, 3389, 53, 25, 1433, 1521, 3306, 5432, 6379, 8080, 9200, 9092, 5601]])
+COMMON_PORTS = [22, 80, 443, 3389, 53, 25, 1433, 1521, 3306, 5432, 6379, 8080, 9200, 9092, 5601]
+common_ports_arr = F.array(*[F.lit(p) for p in COMMON_PORTS])
 nfl_1m = (
-    nfl.groupBy(F.window("timestamp", "60 seconds").alias("w1m"), "key")
+    nfl.groupBy(F.window("timestamp", "60 seconds").alias("w1m"), F.col("key"))
        .agg(
-           F.countDistinct("dstport").alias("dports"),
-           F.sum("pkts").alias("pkts"),
-           F.sum("bytes").alias("bytes"),
-           F.sum((~F.array_contains(common_ports, F.col("dstport"))).cast("int")).alias("rare_ports"),
+           # remplace countDistinct -> approx_count_distinct (compatible streaming)
+           F.approx_count_distinct("dstport").alias("dports"),
+           # cast explicites pour éviter les overflows et nulls
+           F.sum(F.coalesce(F.col("pkts").cast("long"), F.lit(0))).alias("pkts"),
+           F.sum(F.coalesce(F.col("bytes").cast("long"), F.lit(0))).alias("bytes"),
+           # sum d’un indicateur 1/0 (array_contains retourne bool)
+           F.sum(
+               F.when(~F.array_contains(common_ports_arr, F.col("dstport")), F.lit(1)).otherwise(F.lit(0))
+           ).alias("rare_ports"),
        )
 )
 
@@ -680,7 +702,7 @@ nfl_scored = (
             (
                 F.when(F.col("dports") >= 20, F.lit(50)).otherwise(F.lit(0))
                 + F.when(F.col("rare_ports") >= 10, F.lit(30)).otherwise(F.lit(0))
-                + F.when(F.col("bytes") >= 10_000_000, F.lit(20)).otherwise(F.lit(0))
+                + F.when(F.col("bytes") >= F.lit(10_000_000), F.lit(20)).otherwise(F.lit(0))
             ).cast("double"),
         ).alias("score"),
         F.when(F.col("dports") >= 30, F.lit("high"))
