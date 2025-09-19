@@ -23,138 +23,98 @@ CHECKPOINT_DIR    = os.getenv("CHECKPOINT_DIR", "/tmp/ckpt-siem-fast")
 APP_NAME          = os.getenv("APP_NAME", "siem-fastlane")
 PIPELINE_VERSION  = os.getenv("PIPELINE_VERSION", "fastlane-0.1.2")
 
-TRIGGER_SEC       = os.getenv("TRIGGER_SEC", "10 seconds")   # 5–10s conseillé pour démo
+TRIGGER_SEC       = os.getenv("TRIGGER_SEC", "5 seconds")    # 5–10s conseillé pour démo
 SHUFFLE_PARTS     = int(os.getenv("SPARK_SHUFFLE_PARTS", "8"))
 
 # --------------------------
-# Schemas (minimal)
+# Schemas
 # --------------------------
-FW_SCHEMA = T.StructType([
+BASE_FIELDS = [
     T.StructField("ts", T.StringType()),
     T.StructField("event_type", T.StringType()),
     T.StructField("source", T.StringType()),
     T.StructField("severity", T.StringType()),
     T.StructField("host", T.StringType()),
     T.StructField("event_id", T.StringType()),
+]
+
+FW_SCHEMA = T.StructType(BASE_FIELDS + [
     T.StructField("raw", T.StringType()),
     T.StructField("srcip", T.StringType()),
     T.StructField("dstip", T.StringType()),
-    T.StructField("dstport", T.IntegerType())
+    T.StructField("dstport", T.IntegerType()),
 ])
 
-WEB_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
+WEB_SCHEMA = T.StructType(BASE_FIELDS + [
     T.StructField("message", T.StringType()),
     T.StructField("client_ip", T.StringType()),
-    T.StructField("status", T.IntegerType())
+    T.StructField("status", T.IntegerType()),
 ])
 
-ESXI_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
+ESXI_SCHEMA = T.StructType(BASE_FIELDS + [
     T.StructField("file", T.StringType()),
     T.StructField("message", T.StringType()),
-    T.StructField("usage_pct", T.IntegerType())
+    T.StructField("usage_pct", T.IntegerType()),
 ])
 
-AUTH_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
+AUTH_SCHEMA = T.StructType(BASE_FIELDS + [
     T.StructField("username", T.StringType()),
     T.StructField("outcome", T.StringType()),
-    T.StructField("srcip", T.StringType())
+    T.StructField("srcip", T.StringType()),
 ])
 
-DNS_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
+DNS_SCHEMA = T.StructType(BASE_FIELDS + [
     T.StructField("message", T.StringType()),
     T.StructField("client_ip", T.StringType()),
     T.StructField("qname", T.StringType()),
     T.StructField("qtype", T.StringType()),
-    T.StructField("rcode", T.StringType())
+    T.StructField("rcode", T.StringType()),
 ])
 
-WINLOG_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
-    T.StructField("win_event_id", T.IntegerType()),
-    T.StructField("message", T.StringType())
-])
-
-NETFLOW_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
-    T.StructField("srcip", T.StringType()),
-    T.StructField("dstip", T.StringType()),
-    T.StructField("dstport", T.IntegerType()),
-    T.StructField("bytes", T.LongType()),
-    T.StructField("pkts", T.LongType())
-])
-
-VULN_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
-    T.StructField("asset", T.StringType()),
-    T.StructField("cve", T.StringType()),
-    T.StructField("vuln_severity", T.StringType()),
-    T.StructField("first_seen", T.StringType())
-])
-
-IDS_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
+IDS_SCHEMA = T.StructType(BASE_FIELDS + [
     T.StructField("srcip", T.StringType()),
     T.StructField("dstip", T.StringType()),
     T.StructField("dstport", T.IntegerType()),
     T.StructField("signature", T.StringType()),
-    T.StructField("ids_severity", T.StringType())
 ])
 
-VPN_SCHEMA = T.StructType([
-    T.StructField("ts", T.StringType()),
-    T.StructField("event_type", T.StringType()),
-    T.StructField("source", T.StringType()),
-    T.StructField("severity", T.StringType()),
-    T.StructField("host", T.StringType()),
-    T.StructField("event_id", T.StringType()),
+VPN_SCHEMA = T.StructType(BASE_FIELDS + [
     T.StructField("user", T.StringType()),
     T.StructField("srcip", T.StringType()),
     T.StructField("geo", T.StringType()),
-    T.StructField("action", T.StringType())
+    T.StructField("action", T.StringType()),
+])
+
+WINLOG_SCHEMA = T.StructType(BASE_FIELDS + [
+    T.StructField("win_event_id", T.IntegerType()),
+    T.StructField("message", T.StringType()),
+    T.StructField("details", T.MapType(T.StringType(), T.StringType())),
+])
+
+NETFLOW_SCHEMA = T.StructType(BASE_FIELDS + [
+    T.StructField("srcip", T.StringType()),
+    T.StructField("dstip", T.StringType()),
+    T.StructField("dstport", T.IntegerType()),
+    T.StructField("bytes", T.LongType()),
+    T.StructField("pkts", T.LongType()),
+])
+
+VULN_SCHEMA = T.StructType(BASE_FIELDS + [
+    T.StructField("asset", T.StringType()),
+    T.StructField("cve", T.StringType()),
+    T.StructField("severity_vuln", T.StringType()),
+    T.StructField("first_seen", T.StringType()),
+])
+
+LINUX_SCHEMA = T.StructType(BASE_FIELDS + [
+    T.StructField("facility", T.StringType()),
+    T.StructField("message", T.StringType()),
+    T.StructField("src_ip", T.StringType()),
+])
+
+DOCKER_SCHEMA = T.StructType(BASE_FIELDS + [
+    T.StructField("container", T.StringType()),
+    T.StructField("message", T.StringType()),
 ])
 
 # --------------------------
@@ -171,171 +131,132 @@ spark = (
 spark.sparkContext.setLogLevel("WARN")
 
 # --------------------------
-# Kafka sources
+# Kafka source (single reader)
 # --------------------------
-def _read_kafka_stream(*, topics=None, pattern=None):
-    if (topics and pattern) or (not topics and not pattern):
-        raise ValueError("Specify either topics or pattern for Kafka subscription")
+if not KAFKA_TOPICS_PATTERN:
+    raise ValueError("KAFKA_TOPICS_PATTERN must be non-empty for subscribePattern")
 
-    reader = (
-        spark.readStream
-        .format("kafka")
-        .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-        .option("startingOffsets", KAFKA_OFFSETS)   # pris au 1er démarrage (checkpoint sinon)
-        .option("failOnDataLoss", "false")
-        .option("groupIdPrefix", APP_NAME)          # groupe lisible: siem-fastlane-*
-        .option("maxOffsetsPerTrigger", "5000")
+raw = (
+    spark.readStream
+    .format("kafka")
+    .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
+    .option("subscribePattern", KAFKA_TOPICS_PATTERN)
+    .option("startingOffsets", KAFKA_OFFSETS)
+    .option("failOnDataLoss", "false")
+    .option("groupIdPrefix", APP_NAME)
+    .option("maxOffsetsPerTrigger", "5000")
+    .load()
+    .selectExpr(
+        "topic as kafka_topic",
+        "partition as kafka_partition",
+        "offset as kafka_offset",
+        "CAST(key AS STRING)  as key_str",
+        "CAST(value AS STRING) as value_str",
     )
-    if pattern:
-        reader = reader.option("subscribePattern", pattern)
-    else:
-        reader = reader.option("subscribe", ",".join(topics))
+)
 
+
+def parse_by_topic(df, topic_name, schema):
     return (
-        reader.load()
-        .withColumn("kafka_topic", F.col("topic"))
-        .withColumn("kafka_partition", F.col("partition"))
-        .withColumn("kafka_offset", F.col("offset"))
-        .withColumn("key_str", F.col("key").cast("string"))
-        .withColumn("value_str", F.col("value").cast("string"))
+        df.filter(F.col("kafka_topic") == topic_name)
+          .select(
+              "kafka_topic",
+              "kafka_partition",
+              "kafka_offset",
+              "key_str",
+              F.from_json("value_str", schema).alias("j"),
+          )
+          .select("kafka_topic", "kafka_partition", "kafka_offset", "key_str", "j.*")
+          .withColumn("timestamp", F.to_timestamp("ts"))
     )
 
-
-kafka_all_raw = _read_kafka_stream(pattern=KAFKA_TOPICS_PATTERN) if KAFKA_TOPICS_PATTERN else None
-
-
-def read_kafka_topic(topic):
-    if kafka_all_raw is not None:
-        return kafka_all_raw.filter(F.col("kafka_topic") == topic)
-    return _read_kafka_stream(topics=[topic])
-
-
-fw_raw  = read_kafka_topic("sec.firewall.raw")
-web_raw = read_kafka_topic("sec.web.raw")
-esx_raw = read_kafka_topic("sec.esxi.raw")
-auth_raw = read_kafka_topic("sec.auth.raw")
-dns_raw  = read_kafka_topic("sec.dns.raw")
-win_raw  = read_kafka_topic("sec.winlog.raw")
-flow_raw = read_kafka_topic("sec.netflow.raw")
-vuln_raw = read_kafka_topic("sec.vuln.raw")
-ids_raw  = read_kafka_topic("sec.ids.raw")
-vpn_raw  = read_kafka_topic("sec.vpn.raw")
-
-HANDLED_TOPICS = [
-    "sec.firewall.raw",
-    "sec.web.raw",
-    "sec.esxi.raw",
-    "sec.auth.raw",
-    "sec.dns.raw",
-    "sec.winlog.raw",
-    "sec.netflow.raw",
-    "sec.vuln.raw",
-    "sec.ids.raw",
-    "sec.vpn.raw",
-]
-
-# --------------------------
-# Parse JSON, normalize time
-# --------------------------
-def parse_json(df, schema):
-    parsed = df.select(
-        "kafka_topic", "kafka_partition", "kafka_offset", "key_str",
-        F.from_json("value_str", schema).alias("j")
-    ).select(
-        "kafka_topic", "kafka_partition", "kafka_offset", "key_str", "j.*"
-    )
-    # Parse ISO ts -> timestamp
-    parsed = parsed.withColumn("timestamp", F.to_timestamp(F.col("ts"))).drop("ts")
-    return parsed
 
 fw = (
-    parse_json(fw_raw, FW_SCHEMA)
+    parse_by_topic(raw, "sec.firewall.raw", FW_SCHEMA)
     .withWatermark("timestamp", "10 minutes")
-    .withColumn("dstport", F.col("dstport").cast("int"))  # défensif
+    .withColumn("dstport", F.col("dstport").cast("int"))
     .filter(F.col("dstport").isNotNull())
     .withColumn(
         "key",
         F.coalesce(
             F.col("key_str"),
-            F.concat_ws(":", F.col("srcip"), F.col("dstport").cast("string"))
-        )
+            F.concat_ws(":", F.col("srcip"), F.col("dstport").cast("string")),
+        ),
     )
 )
 
 web = (
-    parse_json(web_raw, WEB_SCHEMA)
+    parse_by_topic(raw, "sec.web.raw", WEB_SCHEMA)
     .withWatermark("timestamp", "10 minutes")
-    .withColumn("status", F.col("status").cast("int"))     # défensif
+    .withColumn("status", F.col("status").cast("int"))
     .filter(F.col("client_ip").isNotNull())
     .filter(F.col("status").isNotNull())
     .withColumn("key", F.coalesce(F.col("key_str"), F.col("client_ip")))
 )
 
 esx = (
-    parse_json(esx_raw, ESXI_SCHEMA)
-    # pas de watermark ici → on l'applique uniquement au moment de l'agrégat
+    parse_by_topic(raw, "sec.esxi.raw", ESXI_SCHEMA)
     .withColumn("key", F.coalesce(F.col("key_str"), F.col("host")))
 )
 
 auth = (
-    parse_json(auth_raw, AUTH_SCHEMA)
+    parse_by_topic(raw, "sec.auth.raw", AUTH_SCHEMA)
     .withColumn(
         "key",
-        F.coalesce(F.col("key_str"), F.col("srcip"), F.col("username"), F.col("host"))
+        F.coalesce(F.col("key_str"), F.col("srcip"), F.col("username"), F.col("host")),
     )
 )
 
 dns = (
-    parse_json(dns_raw, DNS_SCHEMA)
+    parse_by_topic(raw, "sec.dns.raw", DNS_SCHEMA)
     .withColumn(
         "qname",
         F.coalesce(
             F.col("qname"),
-            F.regexp_extract(F.col("message"), r"query:\s+([A-Za-z0-9\.\-]+)\s", 1)
-        )
+            F.regexp_extract(F.col("message"), r"query:\s+([A-Za-z0-9\.\-]+)\s", 1),
+        ),
     )
-    .withColumn("key", F.coalesce(F.col("key_str"), F.col("client_ip")))
-)
-
-win = (
-    parse_json(win_raw, WINLOG_SCHEMA)
-    .withColumn("key", F.coalesce(F.col("key_str"), F.col("host")))
-)
-
-flow = (
-    parse_json(flow_raw, NETFLOW_SCHEMA)
-    .withColumn("dstport", F.col("dstport").cast("int"))
-    .withColumn("bytes", F.col("bytes").cast("long"))
-    .withColumn("pkts", F.col("pkts").cast("long"))
-    .withColumn(
-        "key",
-        F.coalesce(
-            F.col("key_str"),
-            F.concat_ws(":", F.col("srcip"), F.col("dstip"), F.col("dstport").cast("string"))
-        )
-    )
-)
-
-vuln = (
-    parse_json(vuln_raw, VULN_SCHEMA)
-    .withColumn("key", F.coalesce(F.col("key_str"), F.col("asset"), F.col("host")))
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("client_ip"), F.col("host")))
 )
 
 ids = (
-    parse_json(ids_raw, IDS_SCHEMA)
+    parse_by_topic(raw, "sec.ids.raw", IDS_SCHEMA)
     .withColumn("dstport", F.col("dstport").cast("int"))
-    .withColumn(
-        "key",
-        F.coalesce(
-            F.col("key_str"),
-            F.concat_ws(":", F.col("srcip"), F.col("dstip"), F.col("dstport").cast("string"))
-        )
-    )
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("srcip"), F.col("host")))
 )
 
 vpn = (
-    parse_json(vpn_raw, VPN_SCHEMA)
-    .withColumn("key", F.coalesce(F.col("key_str"), F.col("user"), F.col("srcip")))
+    parse_by_topic(raw, "sec.vpn.raw", VPN_SCHEMA)
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("user"), F.col("srcip"), F.col("host")))
+)
+
+winl = (
+    parse_by_topic(raw, "sec.winlog.raw", WINLOG_SCHEMA)
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("host")))
+)
+
+nfl = (
+    parse_by_topic(raw, "sec.netflow.raw", NETFLOW_SCHEMA)
+    .withWatermark("timestamp", "15 minutes")
+    .withColumn("dstport", F.col("dstport").cast("int"))
+    .withColumn("bytes", F.col("bytes").cast("long"))
+    .withColumn("pkts", F.col("pkts").cast("long"))
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("srcip")))
+)
+
+vuln = (
+    parse_by_topic(raw, "sec.vuln.raw", VULN_SCHEMA)
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("asset"), F.col("host")))
+)
+
+linux = (
+    parse_by_topic(raw, "sec.linux.raw", LINUX_SCHEMA)
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("host")))
+)
+
+docker = (
+    parse_by_topic(raw, "sec.docker.raw", DOCKER_SCHEMA)
+    .withColumn("key", F.coalesce(F.col("key_str"), F.col("container"), F.col("host")))
 )
 
 # --------------------------
@@ -537,375 +458,323 @@ esx_agg = (
 )
 
 # --------------------------
-# AUTH: stateless scoring
+# AUTH (Linux/Windows)
 # --------------------------
-def score_auth(df):
-    s_fail = F.when(F.col("outcome") == "fail", F.lit(40)).otherwise(F.lit(0))
-    s_succ_after_fail = F.when(
-        (F.col("outcome") == "success") & (F.col("severity") == "HIGH"), F.lit(60)
-    ).otherwise(F.lit(0))
-    score_expr = F.least(F.lit(100), s_fail + s_succ_after_fail)
-
-    severity_expr = (
-        F.when(score_expr >= 90, "critical")
-         .when(score_expr >= 75, "high")
-         .when(score_expr >= 50, "medium")
-         .when(score_expr >= 25, "low")
-         .otherwise("info")
-    )
-
-    reason = F.concat(
-        F.lit("Auth "), F.col("outcome"), F.lit(" user="), F.col("username"),
-        F.lit(" from "), F.coalesce(F.col("srcip"), F.lit("?"))
-    )
-
-    evidence = F.struct(
-        F.lit("auth").alias("type"),
-        F.col("username").alias("username"),
-        F.col("outcome").alias("outcome"),
-        F.col("srcip").alias("srcip")
-    )
-
-    return df.select(
+auth_scored = (
+    auth.select(
         F.col("timestamp").alias("@timestamp"),
         F.lit("auth").alias("source"),
         F.col("key"),
-        score_expr.alias("score"),
-        severity_expr.alias("severity"),
-        reason.alias("reason"),
-        evidence.alias("evidence"),
+        F.least(
+            F.lit(100.0),
+            (
+                F.when(F.col("outcome") == "fail", F.lit(40)).otherwise(F.lit(0))
+                + F.when(
+                    (F.col("outcome") == "success") & (F.col("severity") == "HIGH"),
+                    F.lit(60),
+                ).otherwise(F.lit(0))
+            ).cast("double"),
+        ).alias("score"),
+        F.when(F.col("outcome") == "fail", F.lit("low"))
+         .when(
+             (F.col("outcome") == "success") & (F.col("severity") == "HIGH"),
+             F.lit("high"),
+         )
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(
+            F.lit("Auth "), F.coalesce(F.col("outcome"), F.lit("?")),
+            F.lit(" user="), F.coalesce(F.col("username"), F.lit("?")),
+            F.lit(" from "), F.coalesce(F.col("srcip"), F.lit("?")),
+        ).alias("reason"),
+        F.to_json(F.struct("username", "outcome", "srcip")).alias("evidence"),
         F.lit("sec.auth.raw").alias("kafka_topic"),
-        F.lit(PIPELINE_VERSION).alias("pipeline_version")
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
     )
+)
 
+# DNS (60s ratios NXDOMAIN, diversité de qnames)
+dns_60 = (
+    dns.withColumn("is_nx", F.lower(F.coalesce(F.col("rcode"), F.lit(""))) == F.lit("nxdomain"))
+       .groupBy(F.window("timestamp", "60 seconds").alias("w60"), "key")
+       .agg(
+           F.count(F.lit(1)).alias("n"),
+           F.sum(F.col("is_nx").cast("int")).alias("n_nx"),
+           F.countDistinct("qname").alias("uniq_q"),
+       )
+       .withColumn(
+           "nx_rate",
+           F.when(F.col("n") > 0, F.col("n_nx") / F.col("n")).otherwise(F.lit(0.0)),
+       )
+)
 
-auth_scored = score_auth(auth)
-
-
-# --------------------------
-# DNS: stateless scoring
-# --------------------------
-def score_dns(df):
-    qlen = F.length(F.coalesce(F.col("qname"), F.lit("")))
-    s_len = F.when(qlen >= 35, F.lit(40)).when(qlen >= 25, F.lit(20)).otherwise(F.lit(0))
-    s_tldx = F.when(
-        F.col("qname").endswith(".xyz") |
-        F.col("qname").endswith(".top") |
-        F.col("qname").endswith(".icu"),
-        F.lit(20)
-    ).otherwise(F.lit(0))
-    score_expr = F.least(F.lit(100), s_len + s_tldx)
-
-    severity_expr = (
-        F.when(score_expr >= 90, "critical")
-         .when(score_expr >= 75, "high")
-         .when(score_expr >= 50, "medium")
-         .when(score_expr >= 25, "low")
-         .otherwise("info")
-    )
-
-    reason = F.concat(
-        F.lit("DNS query from "), F.col("key"),
-        F.lit(" qname="), F.coalesce(F.col("qname"), F.lit("?"))
-    )
-
-    evidence = F.struct(
-        F.lit("dns").alias("type"),
-        F.col("client_ip").alias("client_ip"),
-        F.col("qname").alias("qname")
-    )
-
-    return df.select(
-        F.col("timestamp").alias("@timestamp"),
+dns_scored = (
+    dns_60.select(
+        F.col("w60.end").alias("@timestamp"),
         F.lit("dns").alias("source"),
         F.col("key"),
-        score_expr.alias("score"),
-        severity_expr.alias("severity"),
-        reason.alias("reason"),
-        evidence.alias("evidence"),
+        F.least(
+            F.lit(100.0),
+            (
+                F.when(F.col("n") >= 30, F.lit(10)).otherwise(F.lit(0))
+                + F.when(F.col("nx_rate") >= 0.3, F.lit(60)).otherwise(F.lit(0))
+                + F.when(F.col("uniq_q") >= 20, F.lit(30)).otherwise(F.lit(0))
+            ).cast("double"),
+        ).alias("score"),
+        F.when(F.col("nx_rate") >= 0.5, F.lit("high"))
+         .when(F.col("nx_rate") >= 0.3, F.lit("medium"))
+         .when(F.col("n") >= 30, F.lit("low"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(
+            F.lit("DNS anomalies: n="), F.col("n").cast("string"),
+            F.lit(", nx="), F.col("n_nx").cast("string"),
+            F.lit(", uniq_q="), F.col("uniq_q").cast("string"),
+        ).alias("reason"),
+        F.to_json(
+            F.struct(
+                F.lit("60s").alias("win"),
+                "n",
+                "n_nx",
+                "uniq_q",
+                "nx_rate",
+            )
+        ).alias("evidence"),
         F.lit("sec.dns.raw").alias("kafka_topic"),
-        F.lit(PIPELINE_VERSION).alias("pipeline_version")
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
     )
+)
 
+# IDS (Suricata/Snort)
+ids_sev = (
+    F.when(F.lower(F.coalesce(F.col("severity"), F.lit(""))) == "high", F.lit(80))
+     .when(F.lower(F.coalesce(F.col("severity"), F.lit(""))) == "medium", F.lit(50))
+     .when(F.lower(F.coalesce(F.col("severity"), F.lit(""))) == "low", F.lit(25))
+     .otherwise(F.lit(20))
+)
 
-dns_scored = score_dns(dns)
+signature_lower = F.lower(F.coalesce(F.col("signature"), F.lit("")))
+ids_boost = (
+    F.when(signature_lower.contains("malware"), F.lit(15))
+     .when(signature_lower.contains("c2"), F.lit(20))
+     .when(signature_lower.contains("exploit"), F.lit(10))
+     .otherwise(F.lit(0))
+)
 
-
-# --------------------------
-# WINLOG: stateless scoring
-# --------------------------
-def score_win(df):
-    msg = F.lower(F.coalesce(F.col("message"), F.lit("")))
-    eid = F.coalesce(F.col("win_event_id"), F.lit(0))
-
-    s_fail = F.when(eid == 4625, F.lit(35)).otherwise(F.lit(0))
-    s_priv = F.when(eid == 4672, F.lit(30)).otherwise(F.lit(0))
-    s_proc = F.when((eid == 4688) & (msg.rlike("powershell|cmd.exe|wmic|certutil")), F.lit(40))
-    s_proc = s_proc.otherwise(F.lit(0))
-
-    score_expr = F.least(F.lit(100), s_fail + s_priv + s_proc)
-
-    severity_expr = (
-        F.when(score_expr >= 90, "critical")
-         .when(score_expr >= 75, "high")
-         .when(score_expr >= 50, "medium")
-         .when(score_expr >= 25, "low")
-         .otherwise("info")
-    )
-
-    reason = F.concat(F.lit("Win event "), eid.cast("string"), F.lit(" on "), F.col("host"))
-
-    evidence = F.struct(
-        F.lit("winlog").alias("type"),
-        eid.alias("event_id"),
-        F.col("message").alias("message")
-    )
-
-    return df.select(
-        F.col("timestamp").alias("@timestamp"),
-        F.lit("winlog").alias("source"),
-        F.col("key"),
-        score_expr.alias("score"),
-        severity_expr.alias("severity"),
-        reason.alias("reason"),
-        evidence.alias("evidence"),
-        F.lit("sec.winlog.raw").alias("kafka_topic"),
-        F.lit(PIPELINE_VERSION).alias("pipeline_version")
-    )
-
-
-win_scored = score_win(win)
-
-
-# --------------------------
-# NETFLOW: stateless scoring
-# --------------------------
-def score_flow(df):
-    sensitive = (
-        F.when(F.col("dstport").isin(22, 3389), F.lit(20))
-         .when(F.col("dstport").isin(9200, 9092, 5601), F.lit(15))
-         .when(F.col("dstport").isin(80, 443), F.lit(5))
-         .otherwise(F.lit(0))
-    )
-    s_bytes = (
-        F.when(F.col("bytes") >= 10_000_000, F.lit(40))
-         .when(F.col("bytes") >= 1_000_000, F.lit(20))
-         .otherwise(F.lit(0))
-    )
-    score_expr = F.least(F.lit(100), sensitive + s_bytes)
-
-    severity_expr = (
-        F.when(score_expr >= 90, "critical")
-         .when(score_expr >= 75, "high")
-         .when(score_expr >= 50, "medium")
-         .when(score_expr >= 25, "low")
-         .otherwise("info")
-    )
-
-    reason = F.concat(
-        F.lit("Netflow "), F.col("srcip"), F.lit("→"),
-        F.col("dstip"), F.lit(":"), F.col("dstport").cast("string"),
-        F.lit(" bytes="), F.col("bytes").cast("string")
-    )
-
-    evidence = F.struct(
-        F.lit("netflow").alias("type"),
-        F.col("srcip").alias("srcip"),
-        F.col("dstip").alias("dstip"),
-        F.col("dstport").alias("dstport"),
-        F.col("bytes").alias("bytes"),
-        F.col("pkts").alias("pkts")
-    )
-
-    return df.select(
-        F.col("timestamp").alias("@timestamp"),
-        F.lit("netflow").alias("source"),
-        F.col("key"),
-        score_expr.alias("score"),
-        severity_expr.alias("severity"),
-        reason.alias("reason"),
-        evidence.alias("evidence"),
-        F.lit("sec.netflow.raw").alias("kafka_topic"),
-        F.lit(PIPELINE_VERSION).alias("pipeline_version")
-    )
-
-
-flow_scored = score_flow(flow)
-
-
-# --------------------------
-# VULN: stateless scoring
-# --------------------------
-def score_vuln(df):
-    sev = F.lower(F.coalesce(F.col("vuln_severity"), F.lit("")))
-    s_map = (
-        F.when(sev == "critical", F.lit(95))
-         .when(sev == "high", F.lit(75))
-         .when(sev == "medium", F.lit(45))
-         .when(sev == "low", F.lit(20))
-         .otherwise(F.lit(10))
-    )
-
-    severity_expr = (
-        F.when(s_map >= 90, "critical")
-         .when(s_map >= 75, "high")
-         .when(s_map >= 50, "medium")
-         .when(s_map >= 25, "low")
-         .otherwise("info")
-    )
-
-    evidence = F.struct(
-        F.lit("vuln").alias("type"),
-        F.col("asset").alias("asset"),
-        F.col("cve").alias("cve"),
-        F.col("vuln_severity").alias("vuln_severity"),
-        F.col("first_seen").alias("first_seen")
-    )
-
-    reason = F.concat(F.lit("Vuln "), F.col("cve"), F.lit(" on "), F.col("asset"))
-
-    return df.select(
-        F.col("timestamp").alias("@timestamp"),
-        F.lit("vuln").alias("source"),
-        F.col("key"),
-        s_map.cast("double").alias("score"),
-        severity_expr.alias("severity"),
-        reason.alias("reason"),
-        evidence.alias("evidence"),
-        F.lit("sec.vuln.raw").alias("kafka_topic"),
-        F.lit(PIPELINE_VERSION).alias("pipeline_version")
-    )
-
-
-vuln_scored = score_vuln(vuln)
-
-
-# --------------------------
-# IDS: stateless scoring
-# --------------------------
-def score_ids(df):
-    sev = F.lower(F.coalesce(F.col("ids_severity"), F.lit("")))
-    s_sig = F.when(F.col("signature").rlike("malware|ransom|c2|command.?and.?control"), F.lit(60))
-    s_sig = s_sig.otherwise(F.lit(0))
-    s_lvl = (
-        F.when(sev.isin("critical", "high", "5", "4"), F.lit(40))
-         .when(sev.isin("medium", "3"), F.lit(25))
-         .when(sev.isin("low", "2", "1"), F.lit(10))
-         .otherwise(F.lit(0))
-    )
-    score_expr = F.least(F.lit(100), s_sig + s_lvl)
-
-    severity_expr = (
-        F.when(score_expr >= 90, "critical")
-         .when(score_expr >= 75, "high")
-         .when(score_expr >= 50, "medium")
-         .when(score_expr >= 25, "low")
-         .otherwise("info")
-    )
-
-    reason = F.concat(
-        F.lit("IDS "), F.col("signature"), F.lit(" "),
-        F.col("srcip"), F.lit("→"), F.col("dstip"), F.lit(":"),
-        F.col("dstport").cast("string")
-    )
-
-    evidence = F.struct(
-        F.lit("ids").alias("type"),
-        F.col("srcip").alias("srcip"),
-        F.col("dstip").alias("dstip"),
-        F.col("dstport").alias("dstport"),
-        F.col("signature").alias("signature"),
-        F.col("ids_severity").alias("ids_severity")
-    )
-
-    return df.select(
+ids_scored = (
+    ids.select(
         F.col("timestamp").alias("@timestamp"),
         F.lit("ids").alias("source"),
         F.col("key"),
-        score_expr.alias("score"),
-        severity_expr.alias("severity"),
-        reason.alias("reason"),
-        evidence.alias("evidence"),
+        F.least(F.lit(100.0), (ids_sev + ids_boost).cast("double")).alias("score"),
+        F.when(ids_sev >= 80, F.lit("high"))
+         .when(ids_sev >= 50, F.lit("medium"))
+         .when(ids_sev >= 25, F.lit("low"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(
+            F.lit("IDS: "), F.coalesce(F.col("signature"), F.lit("alert")),
+            F.lit(" "), F.coalesce(F.col("srcip"), F.lit("?")), F.lit("→"),
+            F.coalesce(F.col("dstip"), F.lit("?")), F.lit(":"),
+            F.coalesce(F.col("dstport").cast("string"), F.lit("?")),
+        ).alias("reason"),
+        F.to_json(F.struct("srcip", "dstip", "dstport", "signature")).alias("evidence"),
         F.lit("sec.ids.raw").alias("kafka_topic"),
-        F.lit(PIPELINE_VERSION).alias("pipeline_version")
-    )
-
-
-ids_scored = score_ids(ids)
-
-
-# --------------------------
-# VPN: stateless scoring
-# --------------------------
-def score_vpn(df):
-    s_fail = F.when(F.col("action") == "fail", F.lit(40)).otherwise(F.lit(0))
-    s_geo = F.when(~F.lower(F.coalesce(F.col("geo"), F.lit("ma"))).startswith("ma"), F.lit(20)).otherwise(F.lit(0))
-    score_expr = F.least(F.lit(100), s_fail + s_geo)
-
-    severity_expr = (
-        F.when(score_expr >= 90, "critical")
-         .when(score_expr >= 75, "high")
-         .when(score_expr >= 50, "medium")
-         .when(score_expr >= 25, "low")
-         .otherwise("info")
-    )
-
-    reason = F.concat(
-        F.lit("VPN "), F.col("action"),
-        F.lit(" user="), F.col("user"),
-        F.lit(" from "), F.coalesce(F.col("geo"), F.lit("?")),
-        F.lit(" ip="), F.coalesce(F.col("srcip"), F.lit("?"))
-    )
-
-    evidence = F.struct(
-        F.lit("vpn").alias("type"),
-        F.col("user").alias("user"),
-        F.col("srcip").alias("srcip"),
-        F.col("geo").alias("geo"),
-        F.col("action").alias("action")
-    )
-
-    return df.select(
-        F.col("timestamp").alias("@timestamp"),
-        F.lit("vpn").alias("source"),
-        F.col("key"),
-        score_expr.alias("score"),
-        severity_expr.alias("severity"),
-        reason.alias("reason"),
-        evidence.alias("evidence"),
-        F.lit("sec.vpn.raw").alias("kafka_topic"),
-        F.lit(PIPELINE_VERSION).alias("pipeline_version")
-    )
-
-
-vpn_scored = score_vpn(vpn)
-
-generic_scored = None
-if kafka_all_raw is not None:
-    generic_raw = kafka_all_raw.filter(~F.col("kafka_topic").isin(HANDLED_TOPICS))
-    ts_expr = F.coalesce(
-        F.to_timestamp(F.get_json_object(F.col("value_str"), "$.@timestamp")),
-        F.to_timestamp(F.get_json_object(F.col("value_str"), "$.timestamp")),
-        F.to_timestamp(F.get_json_object(F.col("value_str"), "$.ts")),
-        F.current_timestamp(),
-    )
-    generic_evidence = F.struct(
-        F.col("value_str").alias("raw"),
-        F.col("kafka_partition").alias("partition"),
-        F.col("kafka_offset").alias("offset"),
-        F.col("key_str").alias("key"),
-    )
-    generic_scored = generic_raw.select(
-        ts_expr.alias("@timestamp"),
-        F.col("kafka_topic").alias("source"),
-        F.coalesce(F.col("key_str"), F.lit("generic")).alias("key"),
-        F.lit(0.0).alias("score"),
-        F.lit("info").alias("severity"),
-        F.concat(F.lit("Generic ingestion from topic "), F.col("kafka_topic")).alias("reason"),
-        generic_evidence.alias("evidence"),
-        F.col("kafka_topic"),
         F.lit(PIPELINE_VERSION).alias("pipeline_version"),
     )
+)
+
+# VPN (échecs + multi-géos sur 60 min)
+vpn_60m = (
+    vpn.groupBy(F.window("timestamp", "60 minutes").alias("w60m"), "key")
+       .agg(
+           F.countDistinct("geo").alias("geo_cnt"),
+           F.sum((F.col("action") == "fail").cast("int")).alias("fails"),
+           F.sum((F.col("action") == "login").cast("int")).alias("logins"),
+       )
+)
+
+vpn_scored = (
+    vpn_60m.select(
+        F.col("w60m.end").alias("@timestamp"),
+        F.lit("vpn").alias("source"),
+        F.col("key"),
+        F.least(
+            F.lit(100.0),
+            (
+                F.when(F.col("geo_cnt") >= 2, F.lit(60)).otherwise(F.lit(0))
+                + F.when(F.col("fails") >= 3, F.lit(30)).otherwise(F.lit(0))
+                + F.when(F.col("logins") >= 10, F.lit(10)).otherwise(F.lit(0))
+            ).cast("double"),
+        ).alias("score"),
+        F.when(F.col("geo_cnt") >= 3, F.lit("high"))
+         .when(F.col("geo_cnt") >= 2, F.lit("medium"))
+         .when(F.col("fails") >= 3, F.lit("low"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(
+            F.lit("VPN geo/bad logins: geos="), F.col("geo_cnt").cast("string"),
+            F.lit(" fails="), F.col("fails").cast("string"),
+        ).alias("reason"),
+        F.to_json(
+            F.struct(
+                F.lit("60m").alias("win"),
+                "geo_cnt",
+                "fails",
+                "logins",
+            )
+        ).alias("evidence"),
+        F.lit("sec.vpn.raw").alias("kafka_topic"),
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
+    )
+)
+
+# Winlog (4625 échecs / 4688 process suspects)
+susp_proc = F.lower(F.coalesce(F.col("message"), F.lit(""))).rlike(
+    r"(powershell|cmd\.exe|wmic|rundll32|certutil|mshta|regsvr32)"
+)
+
+winl_scored = (
+    winl.select(
+        F.col("timestamp").alias("@timestamp"),
+        F.lit("winlog").alias("source"),
+        F.col("key"),
+        F.least(
+            F.lit(100.0),
+            (
+                F.when(F.col("win_event_id") == 4625, F.lit(50)).otherwise(F.lit(0))
+                + F.when(
+                    F.col("win_event_id") == 4688,
+                    F.when(susp_proc, F.lit(40)).otherwise(F.lit(10)),
+                ).otherwise(F.lit(0))
+            ).cast("double"),
+        ).alias("score"),
+        F.when((F.col("win_event_id") == 4625) & (~susp_proc), F.lit("medium"))
+         .when((F.col("win_event_id") == 4688) & susp_proc, F.lit("high"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(
+            F.lit("WinEvent "), F.col("win_event_id").cast("string"),
+            F.lit(": "), F.coalesce(F.col("message"), F.lit("")),
+        ).alias("reason"),
+        F.to_json(F.struct("win_event_id", "details")).alias("evidence"),
+        F.lit("sec.winlog.raw").alias("kafka_topic"),
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
+    )
+)
+
+# Netflow (1m: scans & ports rares)
+common_ports = F.array([F.lit(p) for p in [22, 80, 443, 3389, 53, 25, 1433, 1521, 3306, 5432, 6379, 8080, 9200, 9092, 5601]])
+nfl_1m = (
+    nfl.groupBy(F.window("timestamp", "60 seconds").alias("w1m"), "key")
+       .agg(
+           F.countDistinct("dstport").alias("dports"),
+           F.sum("pkts").alias("pkts"),
+           F.sum("bytes").alias("bytes"),
+           F.sum((~F.array_contains(common_ports, F.col("dstport"))).cast("int")).alias("rare_ports"),
+       )
+)
+
+nfl_scored = (
+    nfl_1m.select(
+        F.col("w1m.end").alias("@timestamp"),
+        F.lit("netflow").alias("source"),
+        F.col("key"),
+        F.least(
+            F.lit(100.0),
+            (
+                F.when(F.col("dports") >= 20, F.lit(50)).otherwise(F.lit(0))
+                + F.when(F.col("rare_ports") >= 10, F.lit(30)).otherwise(F.lit(0))
+                + F.when(F.col("bytes") >= 10_000_000, F.lit(20)).otherwise(F.lit(0))
+            ).cast("double"),
+        ).alias("score"),
+        F.when(F.col("dports") >= 30, F.lit("high"))
+         .when(F.col("dports") >= 20, F.lit("medium"))
+         .when(F.col("rare_ports") >= 10, F.lit("low"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(
+            F.lit("Netflow: dports="), F.col("dports").cast("string"),
+            F.lit(" rare="), F.col("rare_ports").cast("string"),
+            F.lit(" bytes="), F.col("bytes").cast("string"),
+        ).alias("reason"),
+        F.to_json(
+            F.struct(
+                F.lit("60s").alias("win"),
+                "dports",
+                "rare_ports",
+                "pkts",
+                "bytes",
+            )
+        ).alias("evidence"),
+        F.lit("sec.netflow.raw").alias("kafka_topic"),
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
+    )
+)
+
+# Vuln (mapping sévérité)
+vuln_base = (
+    F.when(F.lower(F.coalesce(F.col("severity_vuln"), F.lit(""))) == "critical", F.lit(95))
+     .when(F.lower(F.coalesce(F.col("severity_vuln"), F.lit(""))) == "high", F.lit(80))
+     .when(F.lower(F.coalesce(F.col("severity_vuln"), F.lit(""))) == "medium", F.lit(50))
+     .when(F.lower(F.coalesce(F.col("severity_vuln"), F.lit(""))) == "low", F.lit(20))
+     .otherwise(F.lit(10))
+)
+
+vuln_scored = (
+    vuln.select(
+        F.coalesce(F.to_timestamp("first_seen"), F.col("timestamp")).alias("@timestamp"),
+        F.lit("vuln").alias("source"),
+        F.col("key"),
+        vuln_base.cast("double").alias("score"),
+        F.when(vuln_base >= 90, F.lit("critical"))
+         .when(vuln_base >= 75, F.lit("high"))
+         .when(vuln_base >= 50, F.lit("medium"))
+         .when(vuln_base >= 25, F.lit("low"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(
+            F.lit("VULN "), F.coalesce(F.col("asset"), F.lit("?")), F.lit(" "),
+            F.coalesce(F.col("cve"), F.lit("?")), F.lit(" severity="),
+            F.coalesce(F.col("severity_vuln"), F.lit("?")),
+        ).alias("reason"),
+        F.to_json(F.struct("asset", "cve", "severity_vuln", "first_seen")).alias("evidence"),
+        F.lit("sec.vuln.raw").alias("kafka_topic"),
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
+    )
+)
+
+# Linux & Docker (pass-through utile)
+linux_msg_lower = F.lower(F.coalesce(F.col("message"), F.lit("")))
+linux_scored = (
+    linux.select(
+        F.col("timestamp").alias("@timestamp"),
+        F.lit("linux").alias("source"),
+        F.col("key"),
+        F.when(F.col("event_type") == "linux.auth.failed", F.lit(50.0))
+         .when(linux_msg_lower.contains("error"), F.lit(25.0))
+         .otherwise(F.lit(10.0)).alias("score"),
+        F.when(F.col("event_type") == "linux.auth.failed", F.lit("medium"))
+         .when(linux_msg_lower.contains("error"), F.lit("low"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.coalesce(F.col("message"), F.lit("linux event")).alias("reason"),
+        F.to_json(F.struct("facility", "message", "src_ip")).alias("evidence"),
+        F.lit("sec.linux.raw").alias("kafka_topic"),
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
+    )
+)
+
+docker_msg_lower = F.lower(F.coalesce(F.col("message"), F.lit("")))
+docker_scored = (
+    docker.select(
+        F.col("timestamp").alias("@timestamp"),
+        F.lit("docker").alias("source"),
+        F.col("key"),
+        F.when(F.col("event_type") == "docker.oom", F.lit(80.0))
+         .when(docker_msg_lower.contains("error"), F.lit(40.0))
+         .otherwise(F.lit(10.0)).alias("score"),
+        F.when(F.col("event_type") == "docker.oom", F.lit("high"))
+         .when(docker_msg_lower.contains("error"), F.lit("medium"))
+         .otherwise(F.lit("info")).alias("severity"),
+        F.concat(F.col("container"), F.lit(": "), F.coalesce(F.col("message"), F.lit(""))).alias("reason"),
+        F.to_json(F.struct("container", "message")).alias("evidence"),
+        F.lit("sec.docker.raw").alias("kafka_topic"),
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
+    )
+)
 
 # --------------------------
 # Normalize evidence → JSON + union
@@ -913,35 +782,22 @@ if kafka_all_raw is not None:
 fw_scored  = fw_scored.withColumn("evidence", F.to_json(F.col("evidence")))
 web_scored = web_scored.withColumn("evidence", F.to_json(F.col("evidence")))
 esx_agg    = esx_agg.withColumn("evidence", F.to_json(F.col("evidence")))
-auth_scored = auth_scored.withColumn("evidence", F.to_json(F.col("evidence")))
-dns_scored  = dns_scored.withColumn("evidence", F.to_json(F.col("evidence")))
-win_scored  = win_scored.withColumn("evidence", F.to_json(F.col("evidence")))
-flow_scored = flow_scored.withColumn("evidence", F.to_json(F.col("evidence")))
-vuln_scored = vuln_scored.withColumn("evidence", F.to_json(F.col("evidence")))
-ids_scored  = ids_scored.withColumn("evidence", F.to_json(F.col("evidence")))
-vpn_scored  = vpn_scored.withColumn("evidence", F.to_json(F.col("evidence")))
-if generic_scored is not None:
-    generic_scored = generic_scored.withColumn("evidence", F.to_json(F.col("evidence")))
 
-alerts_cols = ["@timestamp","source","key","score","severity","reason","evidence","kafka_topic","pipeline_version"]
-scored_streams = [
-    fw_scored.select(alerts_cols),
-    web_scored.select(alerts_cols),
-    esx_agg.select(alerts_cols),
-    auth_scored.select(alerts_cols),
-    dns_scored.select(alerts_cols),
-    win_scored.select(alerts_cols),
-    flow_scored.select(alerts_cols),
-    vuln_scored.select(alerts_cols),
-    ids_scored.select(alerts_cols),
-    vpn_scored.select(alerts_cols),
-]
-if generic_scored is not None:
-    scored_streams.append(generic_scored.select(alerts_cols))
-
-alerts = scored_streams[0]
-for df in scored_streams[1:]:
-    alerts = alerts.unionByName(df)
+alerts_cols = ["@timestamp", "source", "key", "score", "severity", "reason", "evidence", "kafka_topic", "pipeline_version"]
+alerts = (
+    fw_scored.select(alerts_cols)
+    .unionByName(web_scored.select(alerts_cols))
+    .unionByName(esx_agg.select(alerts_cols))
+    .unionByName(auth_scored.select(alerts_cols))
+    .unionByName(dns_scored.select(alerts_cols))
+    .unionByName(ids_scored.select(alerts_cols))
+    .unionByName(vpn_scored.select(alerts_cols))
+    .unionByName(winl_scored.select(alerts_cols))
+    .unionByName(nfl_scored.select(alerts_cols))
+    .unionByName(vuln_scored.select(alerts_cols))
+    .unionByName(linux_scored.select(alerts_cols))
+    .unionByName(docker_scored.select(alerts_cols))
+)
 alerts = alerts.withColumn("score", F.col("score").cast("double"))
 
 # --------------------------
