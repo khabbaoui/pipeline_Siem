@@ -13,6 +13,9 @@ from pyspark.sql import SparkSession, functions as F, types as T
 # --------------------------
 KAFKA_BOOTSTRAP   = os.getenv("KAFKA_BOOTSTRAP", "kafka:9092")
 KAFKA_OFFSETS     = os.getenv("KAFKA_OFFSETS", "earliest")   # earliest en dev, latest en prod
+KAFKA_TOPICS_PATTERN = os.getenv("KAFKA_TOPICS_PATTERN", "sec\\..*").strip()
+if not KAFKA_TOPICS_PATTERN:
+    KAFKA_TOPICS_PATTERN = None
 SINK              = os.getenv("SINK", "console")              # console | es
 ES_URL            = os.getenv("ES_URL", "http://elasticsearch:9200")
 ES_INDEX          = os.getenv("ES_INDEX", "siem-scored-fast")
@@ -170,23 +173,42 @@ spark.sparkContext.setLogLevel("WARN")
 # --------------------------
 # Kafka sources
 # --------------------------
-def read_kafka_topic(topic):
-    return (
+def _read_kafka_stream(*, topics=None, pattern=None):
+    if (topics and pattern) or (not topics and not pattern):
+        raise ValueError("Specify either topics or pattern for Kafka subscription")
+
+    reader = (
         spark.readStream
         .format("kafka")
         .option("kafka.bootstrap.servers", KAFKA_BOOTSTRAP)
-        .option("subscribe", topic)
         .option("startingOffsets", KAFKA_OFFSETS)   # pris au 1er démarrage (checkpoint sinon)
         .option("failOnDataLoss", "false")
         .option("groupIdPrefix", APP_NAME)          # groupe lisible: siem-fastlane-*
         .option("maxOffsetsPerTrigger", "5000")
-        .load()
+    )
+    if pattern:
+        reader = reader.option("subscribePattern", pattern)
+    else:
+        reader = reader.option("subscribe", ",".join(topics))
+
+    return (
+        reader.load()
         .withColumn("kafka_topic", F.col("topic"))
         .withColumn("kafka_partition", F.col("partition"))
         .withColumn("kafka_offset", F.col("offset"))
         .withColumn("key_str", F.col("key").cast("string"))
         .withColumn("value_str", F.col("value").cast("string"))
     )
+
+
+kafka_all_raw = _read_kafka_stream(pattern=KAFKA_TOPICS_PATTERN) if KAFKA_TOPICS_PATTERN else None
+
+
+def read_kafka_topic(topic):
+    if kafka_all_raw is not None:
+        return kafka_all_raw.filter(F.col("kafka_topic") == topic)
+    return _read_kafka_stream(topics=[topic])
+
 
 fw_raw  = read_kafka_topic("sec.firewall.raw")
 web_raw = read_kafka_topic("sec.web.raw")
@@ -198,6 +220,19 @@ flow_raw = read_kafka_topic("sec.netflow.raw")
 vuln_raw = read_kafka_topic("sec.vuln.raw")
 ids_raw  = read_kafka_topic("sec.ids.raw")
 vpn_raw  = read_kafka_topic("sec.vpn.raw")
+
+HANDLED_TOPICS = [
+    "sec.firewall.raw",
+    "sec.web.raw",
+    "sec.esxi.raw",
+    "sec.auth.raw",
+    "sec.dns.raw",
+    "sec.winlog.raw",
+    "sec.netflow.raw",
+    "sec.vuln.raw",
+    "sec.ids.raw",
+    "sec.vpn.raw",
+]
 
 # --------------------------
 # Parse JSON, normalize time
@@ -845,6 +880,33 @@ def score_vpn(df):
 
 vpn_scored = score_vpn(vpn)
 
+generic_scored = None
+if kafka_all_raw is not None:
+    generic_raw = kafka_all_raw.filter(~F.col("kafka_topic").isin(HANDLED_TOPICS))
+    ts_expr = F.coalesce(
+        F.to_timestamp(F.get_json_object(F.col("value_str"), "$.@timestamp")),
+        F.to_timestamp(F.get_json_object(F.col("value_str"), "$.timestamp")),
+        F.to_timestamp(F.get_json_object(F.col("value_str"), "$.ts")),
+        F.current_timestamp(),
+    )
+    generic_evidence = F.struct(
+        F.col("value_str").alias("raw"),
+        F.col("kafka_partition").alias("partition"),
+        F.col("kafka_offset").alias("offset"),
+        F.col("key_str").alias("key"),
+    )
+    generic_scored = generic_raw.select(
+        ts_expr.alias("@timestamp"),
+        F.col("kafka_topic").alias("source"),
+        F.coalesce(F.col("key_str"), F.lit("generic")).alias("key"),
+        F.lit(0.0).alias("score"),
+        F.lit("info").alias("severity"),
+        F.concat(F.lit("Generic ingestion from topic "), F.col("kafka_topic")).alias("reason"),
+        generic_evidence.alias("evidence"),
+        F.col("kafka_topic"),
+        F.lit(PIPELINE_VERSION).alias("pipeline_version"),
+    )
+
 # --------------------------
 # Normalize evidence → JSON + union
 # --------------------------
@@ -858,20 +920,29 @@ flow_scored = flow_scored.withColumn("evidence", F.to_json(F.col("evidence")))
 vuln_scored = vuln_scored.withColumn("evidence", F.to_json(F.col("evidence")))
 ids_scored  = ids_scored.withColumn("evidence", F.to_json(F.col("evidence")))
 vpn_scored  = vpn_scored.withColumn("evidence", F.to_json(F.col("evidence")))
+if generic_scored is not None:
+    generic_scored = generic_scored.withColumn("evidence", F.to_json(F.col("evidence")))
 
 alerts_cols = ["@timestamp","source","key","score","severity","reason","evidence","kafka_topic","pipeline_version"]
-alerts = (
-    fw_scored.select(alerts_cols)
-    .unionByName(web_scored.select(alerts_cols))
-    .unionByName(esx_agg.select(alerts_cols))
-    .unionByName(auth_scored.select(alerts_cols))
-    .unionByName(dns_scored.select(alerts_cols))
-    .unionByName(win_scored.select(alerts_cols))
-    .unionByName(flow_scored.select(alerts_cols))
-    .unionByName(vuln_scored.select(alerts_cols))
-    .unionByName(ids_scored.select(alerts_cols))
-    .unionByName(vpn_scored.select(alerts_cols))
-).withColumn("score", F.col("score").cast("double"))
+scored_streams = [
+    fw_scored.select(alerts_cols),
+    web_scored.select(alerts_cols),
+    esx_agg.select(alerts_cols),
+    auth_scored.select(alerts_cols),
+    dns_scored.select(alerts_cols),
+    win_scored.select(alerts_cols),
+    flow_scored.select(alerts_cols),
+    vuln_scored.select(alerts_cols),
+    ids_scored.select(alerts_cols),
+    vpn_scored.select(alerts_cols),
+]
+if generic_scored is not None:
+    scored_streams.append(generic_scored.select(alerts_cols))
+
+alerts = scored_streams[0]
+for df in scored_streams[1:]:
+    alerts = alerts.unionByName(df)
+alerts = alerts.withColumn("score", F.col("score").cast("double"))
 
 # --------------------------
 # Sink: console (dev) ou Elasticsearch (prod)
